@@ -51,4 +51,68 @@ def SAINT_pretrain(model, cat_idxs, X_train, y_train, continuous_mean_std, opt, 
                 aug_features_1 = model.transformer(x_categ_enc, x_cont_enc)
                 aug_features_2 = model.transformer(x_categ_enc_2, x_cont_enc_2)
                 aug_features_1 = (aug_features_1 / aug_features_1.norm(dim=-1, keepdim=True)).flatten(1, 2)
-                aug_features_2 = (aug
+                aug_features_2 = (aug_features_2 / aug_features_2.norm(dim=-1, keepdim=True)).flatten(1, 2)
+                if opt.pt_projhead_style == 'diff':
+                    aug_features_1 = model.pt_mlp(aug_features_1)
+                    aug_features_2 = model.pt_mlp2(aug_features_2)
+                elif opt.pt_projhead_style == 'same':
+                    aug_features_1 = model.pt_mlp(aug_features_1)
+                    aug_features_2 = model.pt_mlp(aug_features_2)
+                logits_per_aug1 = aug_features_1 @ aug_features_2.t() / opt.nce_temp
+                logits_per_aug2 = aug_features_2 @ aug_features_1.t() / opt.nce_temp
+                targets = torch.arange(logits_per_aug1.size(0)).to(logits_per_aug1.device)
+                loss_1 = criterion1(logits_per_aug1, targets)
+                loss_2 = criterion1(logits_per_aug2, targets)
+                loss = opt.lam0 * (loss_1 + loss_2) / 2
+
+            if 'denoising' in opt.pt_tasks:
+                cat_outs, con_outs = model(x_categ_enc_2, x_cont_enc_2)
+                if len(con_outs) > 0:
+                    con_outs = torch.cat(con_outs, dim=1)
+                    l2 = criterion2(con_outs, x_cont)
+                else:
+                    l2 = 0
+                l1 = 0
+                n_cat = x_categ.shape[-1]
+                for j in range(1, n_cat):
+                    l1 += criterion1(cat_outs[j], x_categ[:, j])
+                loss += opt.lam2 * l1 + opt.lam3 * l2
+
+            loss.backward()
+            optimizer.step()
+            running_loss += loss.item()
+
+        avg_loss = running_loss / len(trainloader)
+        log_line = f"Epoch: {epoch}, Avg Loss: {avg_loss:.4f}\n"
+        print(log_line.strip())
+        with open(log_path, 'a') as f_log:
+            f_log.write(log_line)
+
+        # Save checkpoint every save_freq epochs
+        if (epoch + 1) % save_freq == 0:
+            ckpt_path = f"pretrain_ckpt_epoch{epoch+1}.pt"
+            torch.save(model.state_dict(), ckpt_path)
+
+        # Save best model
+        if avg_loss < best_loss - 1e-4:  # consider significant improvement
+            best_loss = avg_loss
+            epochs_no_improve = 0
+            torch.save(model.state_dict(), "pretrain_best_model.pt")
+        else:
+            epochs_no_improve += 1
+
+        # Early stopping
+        if epochs_no_improve >= patience:
+            print(f"Early stopping at epoch {epoch+1}")
+            with open(log_path, 'a') as f_log:
+                f_log.write(f"Early stopping at epoch {epoch+1}\n")
+            break
+
+    print("END OF PRETRAINING!")
+    with open(log_path, 'a') as f_log:
+        f_log.write("END OF PRETRAINING!\n")
+
+    return model
+        # if opt.active_log:
+        #     wandb.log({'pt_epoch': epoch ,'pretrain_epoch_loss': running_loss
+        #     })
