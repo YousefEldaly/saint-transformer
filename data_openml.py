@@ -149,13 +149,13 @@ def load_custom_data(dataset_path, seed, task):
     
     # Extract embeddings and target
     X_train = train.filter(regex='^emb_').values.astype(np.float32)
-    y_train = train['founder_idea_fit_score'].values.astype(np.float32)
+    y_train = train['fit_score'].values.astype(np.float32)
     
     X_val = val.filter(regex='^emb_').values.astype(np.float32)
-    y_val = val['founder_idea_fit_score'].values.astype(np.float32)
+    y_val = val['fit_score'].values.astype(np.float32)
     
     X_test = test.filter(regex='^emb_').values.astype(np.float32)
-    y_test = test['founder_idea_fit_score'].values.astype(np.float32)
+    y_test = test['_fit_score'].values.astype(np.float32)
     
     # Create masks (all 1s since embeddings have no missing values)
     mask_train = np.ones_like(X_train, dtype=np.int64)
