@@ -155,7 +155,7 @@ def load_custom_data(dataset_path, seed, task):
     y_val = val['fit_score'].values.astype(np.float32)
     
     X_test = test.filter(regex='^emb_').values.astype(np.float32)
-    y_test = test['_fit_score'].values.astype(np.float32)
+    y_test = test['fit_score'].values.astype(np.float32)
     
     # Create masks (all 1s since embeddings have no missing values)
     mask_train = np.ones_like(X_train, dtype=np.int64)
