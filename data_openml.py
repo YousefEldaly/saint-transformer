@@ -40,7 +40,11 @@ def data_split(X,y,nan_mask,indices):
     return x_d, y_d
 
 
-def data_prep_openml(ds_id, seed, task, datasplit=[.65, .15, .2]):
+def data_prep_openml(ds_id, seed, task, datasplit=[.65, .15, .2], **kwargs):
+
+    if ds_id == -1:
+        dataset_path = kwargs.get('dataset_path', './custom_data')
+        return load_custom_data(dataset_path, seed, task)
     
     np.random.seed(seed) 
     dataset = openml.datasets.get_dataset(ds_id)
@@ -131,3 +135,55 @@ class DataSetCatCon(Dataset):
         # X1 has categorical data, X2 has continuous
         return np.concatenate((self.cls[idx], self.X1[idx])), self.X2[idx],self.y[idx], np.concatenate((self.cls_mask[idx], self.X1_mask[idx])), self.X2_mask[idx]
 
+
+def load_custom_data(dataset_path, seed, task):
+    """Load custom embedded dataset from CSV files"""
+    import pandas as pd
+    import numpy as np
+    import os
+    
+    # Load datasets
+    train = pd.read_csv(os.path.join(dataset_path, 'train.csv'))
+    val = pd.read_csv(os.path.join(dataset_path, 'val.csv'))
+    test = pd.read_csv(os.path.join(dataset_path, 'test.csv'))
+    
+    # Extract embeddings and target
+    X_train = train.filter(regex='^emb_').values.astype(np.float32)
+    y_train = train['founder_idea_fit_score'].values.astype(np.float32)
+    
+    X_val = val.filter(regex='^emb_').values.astype(np.float32)
+    y_val = val['founder_idea_fit_score'].values.astype(np.float32)
+    
+    X_test = test.filter(regex='^emb_').values.astype(np.float32)
+    y_test = test['founder_idea_fit_score'].values.astype(np.float32)
+    
+    # Create masks (all 1s since embeddings have no missing values)
+    mask_train = np.ones_like(X_train, dtype=np.int64)
+    mask_val = np.ones_like(X_val, dtype=np.int64)
+    mask_test = np.ones_like(X_test, dtype=np.int64)
+    
+    # Create dictionary formats expected by SAINT
+    X_train_dict = {'data': X_train, 'mask': mask_train}
+    y_train_dict = {'data': y_train.reshape(-1, 1)}
+    
+    X_val_dict = {'data': X_val, 'mask': mask_val}
+    y_val_dict = {'data': y_val.reshape(-1, 1)}
+    
+    X_test_dict = {'data': X_test, 'mask': mask_test}
+    y_test_dict = {'data': y_test.reshape(-1, 1)}
+    
+    # Metadata for SAINT
+    cat_idxs = []  # No categorical features
+    con_idxs = list(range(X_train.shape[1]))  # All features are continuous
+    cat_dims = []
+    
+    # Calculate normalization parameters (using training set only)
+    train_mean = np.mean(X_train, axis=0)
+    train_std = np.std(X_train, axis=0)
+    train_std = np.where(train_std < 1e-6, 1.0, train_std)  # Prevent division by zero
+    
+    return (cat_dims, cat_idxs, con_idxs, 
+            X_train_dict, y_train_dict, 
+            X_val_dict, y_val_dict, 
+            X_test_dict, y_test_dict, 
+            train_mean, train_std)
