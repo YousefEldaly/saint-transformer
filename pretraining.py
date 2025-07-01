@@ -3,7 +3,7 @@ from torch import nn
 import copy
 import time
 
-from baselines.data_openml import data_prep_openml,task_dset_ids,DataSetCatCon
+from data_openml import data_prep_openml,task_dset_ids,DataSetCatCon
 from torch.utils.data import DataLoader
 import torch.optim as optim
 from augmentations import embed_data_mask
