@@ -1,7 +1,5 @@
 import torch
 from torch import nn
-import copy
-import time
 
 from data_openml import data_prep_openml,task_dset_ids,DataSetCatCon
 from torch.utils.data import DataLoader
@@ -23,24 +21,8 @@ def SAINT_pretrain(model,cat_idxs,X_train,y_train,continuous_mean_std,opt,device
     }
     criterion1 = nn.CrossEntropyLoss()
     criterion2 = nn.MSELoss()
-    
-    # Create log file
-    log_file = open(f"pretraining_log_{time.strftime('%Y%m%d-%H%M%S')}.txt", "w")
-    log_file.write("Epoch\tLoss\n")
-    
-    # Early stopping initialization
-    best_loss = float('inf')
-    best_model_wts = copy.deepcopy(model.state_dict())
-    patience = 10
-    patience_counter = 0
-    early_stop = False
-    
     print("Pretraining begins!")
     for epoch in range(opt.pretrain_epochs):
-        if early_stop:
-            print(f"Early stopping triggered at epoch {epoch}")
-            break
-            
         model.train()
         running_loss = 0.0
         for i, data in enumerate(trainloader, 0):
@@ -90,12 +72,15 @@ def SAINT_pretrain(model,cat_idxs,X_train,y_train,continuous_mean_std,opt,device
                 loss+= opt.lam1*torch.diagonal(-1*c1).add_(1).pow_(2).sum()
             if 'denoising' in opt.pt_tasks:
                 cat_outs, con_outs = model(x_categ_enc_2, x_cont_enc_2)
+                # if con_outs.shape(-1) != 0:
+                # import ipdb; ipdb.set_trace()
                 if len(con_outs) > 0:
                     con_outs =  torch.cat(con_outs,dim=1)
                     l2 = criterion2(con_outs, x_cont)
                 else:
                     l2 = 0
                 l1 = 0
+                # import ipdb; ipdb.set_trace()
                 n_cat = x_categ.shape[-1]
                 for j in range(1,n_cat):
                     l1+= criterion1(cat_outs[j],x_categ[:,j])
@@ -104,52 +89,9 @@ def SAINT_pretrain(model,cat_idxs,X_train,y_train,continuous_mean_std,opt,device
             optimizer.step()
             running_loss += loss.item()
         
-        # Calculate average loss for the epoch
-        epoch_loss = running_loss / len(trainloader)
-        print(f'Epoch: {epoch}, Running Loss: {epoch_loss}')
-        
-        # Log to file
-        log_file.write(f"{epoch}\t{epoch_loss}\n")
-        log_file.flush()  # Ensure immediate write
-        
-        # Check for best model and early stopping
-        if epoch_loss < best_loss:
-            best_loss = epoch_loss
-            best_model_wts = copy.deepcopy(model.state_dict())
-            patience_counter = 0
-            # Save checkpoint
-            torch.save({
-                'epoch': epoch,
-                'model_state_dict': model.state_dict(),
-                'optimizer_state_dict': optimizer.state_dict(),
-                'loss': epoch_loss,
-            }, f'best_model_epoch_{epoch}.pth')
-        else:
-            patience_counter += 1
-            if patience_counter >= patience:
-                early_stop = True
-                # Save final checkpoint before early stop
-                torch.save({
-                    'epoch': epoch,
-                    'model_state_dict': model.state_dict(),
-                    'optimizer_state_dict': optimizer.state_dict(),
-                    'loss': epoch_loss,
-                }, f'last_model_epoch_{epoch}.pth')
-                
-        # Save latest model every epoch
-        torch.save({
-            'epoch': epoch,
-            'model_state_dict': model.state_dict(),
-            'optimizer_state_dict': optimizer.state_dict(),
-            'loss': epoch_loss,
-        }, 'latest_model.pth')
+        print(f'Epoch: {epoch}, Running Loss: {running_loss}')
 
-    # End of training
-    log_file.close()
     print('END OF PRETRAINING!')
-    
-    # Load best model weights
-    model.load_state_dict(best_model_wts)
     return model
         # if opt.active_log:
         #     wandb.log({'pt_epoch': epoch ,'pretrain_epoch_loss': running_loss
