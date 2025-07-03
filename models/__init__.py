@@ -1,2 +1,2 @@
-from models.pretrainmodel import SAINT
-from models.pretrainmodel_vision import SAINT_vision
+from saint_transformer.models.pretrainmodel import SAINT
+from saint_transformer.models.pretrainmodel_vision import SAINT_vision
